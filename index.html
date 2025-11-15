@@ -1,295 +1,170 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>NAC Internal Auditor AI</title>
 
 <!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
+
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<!-- SheetJS (XLSX) -->
+
+<!-- SheetJS (Excel parser) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<!-- html2canvas + jsPDF for PDF export -->
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+<!-- jsPDF -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+<style>
+body {
+  background:#f1f5f9;
+}
+</style>
 </head>
-<body class="bg-slate-50 min-h-screen p-4 font-sans">
+
+<body class="p-4">
 
 <div class="max-w-6xl mx-auto">
-  <header class="flex items-center justify-between mb-4">
-    <h1 class="text-2xl font-bold">NAC Internal Auditor AI</h1>
-    <div class="text-sm text-slate-600">Full version — CSV & Excel, Risk Scoring, Search, Pagination</div>
+  
+  <!-- Header -->
+  <header class="mb-6">
+    <h1 class="text-3xl font-bold">NAC Internal Auditor AI</h1>
+    <p class="text-slate-600 text-sm">Automated Internal Audit Engine (Excel + CSV)</p>
   </header>
 
-  <main class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  <!-- Layout -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-    <!-- LEFT: Input -->
-    <section class="lg:col-span-1 bg-white p-4 rounded-lg shadow-sm">
-      <h2 class="font-semibold mb-2">Upload / Paste Data</h2>
+    <!-- LEFT SIDE -->
+    <div class="bg-white shadow rounded p-4">
+      <h2 class="font-semibold mb-3">Upload or Paste Data</h2>
 
-      <!-- file input supports csv, xlsx, xls -->
       <input id="fileInput" type="file"
-        accept=".csv, text/csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-        class="mb-2 w-full p-2 border rounded" />
+        accept=".csv, text/csv, .xlsx, .xls"
+        class="w-full mb-3 border rounded p-2" />
 
-      <textarea id="csvInput" rows="6" class="w-full p-2 border rounded mb-2" placeholder="Or paste CSV here"></textarea>
+      <textarea id="csvInput" rows="6"
+        class="w-full border rounded p-2 mb-3"
+        placeholder="Or paste CSV here..."></textarea>
 
-      <div class="flex gap-2 mb-2">
-        <button id="runAudit" class="flex-1 py-2 bg-emerald-600 text-white rounded">Run Audit</button>
-        <button id="pasteSample" class="py-2 px-3 border rounded">Sample</button>
+      <button id="runAudit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded">
+        Run Audit
+      </button>
+
+      <button id="pasteSample" class="mt-3 w-full border p-2 rounded">
+        Paste Sample CSV
+      </button>
+
+      <h3 class="mt-5 font-semibold">Table Preview</h3>
+      <div id="tablePreview" class="overflow-auto max-h-64 text-sm border rounded bg-slate-50 p-2"></div>
+    </div>
+
+    <!-- RIGHT SIDE -->
+    <div class="bg-white shadow rounded p-4">
+      <h2 class="font-semibold mb-3">Audit Results</h2>
+
+      <!-- Search + Filter -->
+      <div class="flex gap-2 mb-3">
+        <input id="searchInput" class="flex-1 border rounded p-2 text-sm" placeholder="Search..." />
+        <select id="riskFilter" class="border rounded p-2 text-sm">
+          <option value="all">All Risks</option>
+          <option value="high">High Risk</option>
+          <option value="medium">Medium Risk</option>
+          <option value="low">Low Risk</option>
+        </select>
       </div>
 
-      <div class="text-sm text-slate-600 mb-2">Export:</div>
-      <div class="flex gap-2">
-        <button id="downloadJSON" class="px-3 py-2 border rounded bg-slate-200 flex-1">Download JSON</button>
-        <button id="downloadPDF" class="px-3 py-2 border rounded bg-slate-200 flex-1">Download PDF</button>
+      <!-- Results -->
+      <div id="results" class="text-sm min-h-[120px] border rounded p-2 bg-slate-50">
+        No report yet.
       </div>
 
-      <div class="mt-4 text-xs text-slate-500">
-        Tip: For Excel, ensure the first sheet has header row (column names). Columns commonly used: date, employee, amount, invoice, requested_by, approved_by.
-      </div>
-    </section>
-
-    <!-- MIDDLE: Table + Controls -->
-    <section class="lg:col-span-2 bg-white p-4 rounded-lg shadow-sm">
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
-        <div class="flex gap-2 items-center">
-          <label class="text-sm">Search:</label>
-          <input id="searchBox" class="p-2 border rounded w-56" placeholder="search any column" />
-          <label class="text-sm">Risk:</label>
-          <select id="riskFilter" class="p-2 border rounded">
-            <option value="all">All</option>
-            <option value="High">High</option>
-            <option value="Medium">Medium</option>
-            <option value="Low">Low</option>
-          </select>
-        </div>
-
-        <div class="flex gap-2 items-center">
-          <label class="text-sm">Rows per page</label>
-          <select id="pageSize" class="p-2 border rounded">
-            <option>10</option><option>20</option><option>50</option>
-          </select>
-        </div>
+      <!-- Pagination -->
+      <div class="flex justify-between mt-3">
+        <button id="prevPage" class="px-3 py-1 border rounded">Prev</button>
+        <div id="pageNumber" class="text-sm text-slate-500"></div>
+        <button id="nextPage" class="px-3 py-1 border rounded">Next</button>
       </div>
 
-      <div id="tableWrapper" class="overflow-auto border rounded max-h-[55vh] p-2">
-        <div id="tablePreview" class="text-sm">No data loaded.</div>
+      <!-- Download Buttons -->
+      <div class="mt-4 flex gap-3">
+        <button id="downloadJSON" class="flex-1 border p-2 rounded bg-slate-200">Download JSON</button>
+        <button id="downloadPDF" class="flex-1 border p-2 rounded bg-slate-200">Download PDF</button>
       </div>
 
-      <div class="mt-3 flex items-center justify-between">
-        <div id="pagination" class="text-sm"></div>
-        <div id="tableSummary" class="text-sm text-slate-600"></div>
-      </div>
-    </section>
+      <!-- Summary -->
+      <h3 class="mt-6 font-semibold">Summary Dashboard</h3>
+      <div id="summaryBox" class="text-sm text-slate-700 mt-2"></div>
+      <canvas id="summaryChart" class="mt-4" height="200"></canvas>
+    </div>
 
-    <!-- RIGHT: Summary & Findings -->
-    <section class="lg:col-span-1 bg-white p-4 rounded-lg shadow-sm">
-      <h3 class="font-semibold">Audit Summary</h3>
-      <div id="summaryBox" class="mt-2 text-sm text-slate-700"></div>
-      <div class="mt-3 h-40">
-        <canvas id="summaryChart" class="w-full h-full"></canvas>
-      </div>
-
-      <h4 class="font-semibold mt-4">Findings</h4>
-      <div id="results" class="mt-2 text-sm text-slate-600">No report yet.</div>
-    </section>
-
-  </main>
+  </div>
 </div>
 
+<!-- ===========================
+       JAVASCRIPT SECTION
+=========================== -->
+
 <script>
-/* ---------------- utilities ---------------- */
-function escapeHtml(s){
-  if(!s) return '';
-  return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
-}
+let globalParsed = { headers: [], data: [] };
+let lastReport = [];
+let pagedReport = [];
+let currentPage = 1;
+let rowsPerPage = 6;
+let currentSearch = "";
+let currentRisk = "all";
+let chartInstance = null;
 
-function parseCSV(text){
-  const lines = text.split(/\r?\n/).filter(l=>l.trim());
-  if(!lines.length) return {headers:[], data:[]};
-  const headers = lines[0].split(',').map(h=>h.trim());
+function parseCSV(txt) {
+  const lines = txt.split(/\r?\n/).filter(l=>l.trim());
+  if (!lines.length) return {headers:[],data:[]};
+
+  const headers = lines[0].split(",").map(h=>h.trim());
   const data = lines.slice(1).map(line=>{
-    const parts = line.split(',').map(p=>p.trim());
-    const obj = {};
-    headers.forEach((h,i)=> obj[h]=parts[i]??'');
-    return obj;
+    const cells = line.split(",").map(c=>c.trim());
+    let row = {};
+    headers.forEach((h,i)=>row[h] = cells[i] ?? "");
+    return row;
   });
-  return {headers, data};
+
+  return {headers,data};
 }
 
-/* ----------------- EXCEL PARSE (SheetJS) ----------------- */
-async function parseExcelFile(file){
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(sheet, { defval: "" }); // array of objects
-        const headers = json.length ? Object.keys(json[0]) : [];
-        resolve({ headers, data: json });
-      } catch(err) { reject(err); }
+function parseExcelFile(file){
+  return new Promise((resolve)=>{
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const workbook=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
+      const sheet=workbook.Sheets[workbook.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet,{defval:""});
+      resolve({ headers: Object.keys(json[0]||{}), data: json });
     };
-    reader.onerror = reject;
     reader.readAsArrayBuffer(file);
   });
 }
 
-/* ----------------- RISK / AUDIT HELPERS ----------------- */
-function computeRowRisk(row, flags){
-  // High if missing date/amount/invoice OR duplicate
-  if (flags.isMissingDate || flags.isMissingAmount || flags.isMissingInvoice) return 'High';
-  if (flags.isDuplicate) return 'High';
-  // Medium if amount outlier
-  if (flags.isAmountOutlier) return 'Medium';
-  return 'Low';
-}
+function runAudit(parsed){
+  const data = parsed.data;
+  const hdr = parsed.headers.map(h=>h.toLowerCase());
 
-function makeOutlierFlags(data, amountKey){
-  const nums = data.map(r=>parseFloat(String(r[amountKey]||'').replace(/[^0-9.-]/g,''))).filter(n=>!isNaN(n));
-  if(nums.length<4) return new Set();
-  const avg = nums.reduce((a,b)=>a+b,0)/nums.length;
-  const varr = nums.reduce((s,x)=>s+(x-avg)*(x-avg),0)/nums.length;
-  const sd = Math.sqrt(varr||1);
-  const outliers = new Set();
+  const dateKey = parsed.headers.find(h=>h.toLowerCase().includes("date"));
+  const amtKey = parsed.headers.find(h=>h.toLowerCase().includes("amount"));
+  const invKey = parsed.headers.find(h=>h.toLowerCase().includes("invoice")||h.toLowerCase().includes("receipt"));
+
+  let missingDate=0, missingAmt=0, missingInv=0;
+
+  const seen={};
+  const duplicates=new Set();
+
   data.forEach(r=>{
-    const v = parseFloat(String(r[amountKey]||'').replace(/[^0-9.-]/g,'')); if(isNaN(v)) return;
-    if(Math.abs(v-avg) > 3*sd) outliers.add(v);
-  });
-  return outliers;
-}
+    if(dateKey && !r[dateKey]) missingDate++;
+    if(amtKey && !r[amtKey]) missingAmt++;
+    if(invKey && !r[invKey]) missingInv++;
 
-/* ---------------- state ---------------- */
-let globalParsed = null;
-let currentPage = 1;
-let pageSize = 10;
-let currentSearch = '';
-let currentRiskFilter = 'all';
-let chartInstance = null;
-let lastReport = null;
-
-/* ---------------- render table with pagination + highlights ---------------- */
-function renderTable(){
-  if(!globalParsed) { document.getElementById('tablePreview').innerHTML='No data loaded.'; return; }
-  const hc = globalParsed.headers.slice();
-  // detect keys
-  const invoiceKey = globalParsed.headers.find(h=>h.toLowerCase().includes('invoice')||h.toLowerCase().includes('receipt'));
-  const dateKey = globalParsed.headers.find(h=>h.toLowerCase().includes('date'));
-  const amountKey = globalParsed.headers.find(h=>h.toLowerCase().includes('amount')||h.toLowerCase().includes('total')||h.toLowerCase().includes('value'));
-
-  // duplicates detection
-  const seen = {}, duplicates = new Set();
-  globalParsed.data.forEach(r=>{
-    if(!invoiceKey) return;
-    const v = String(r[invoiceKey]||'').trim();
-    if(!v) return;
-    if(seen[v]) duplicates.add(v);
-    seen[v]=true;
-  });
-
-  // outlier values
-  const outlierVals = amountKey ? makeOutlierFlags(globalParsed.data, amountKey) : new Set();
-
-  // build enriched rows
-  const enriched = globalParsed.data.map((r, idx)=>{
-    const isMissingDate = dateKey ? !String(r[dateKey]||'').trim() : false;
-    const isMissingAmount = amountKey ? !String(r[amountKey]||'').trim() : false;
-    const isMissingInvoice = invoiceKey ? !String(r[invoiceKey]||'').trim() : false;
-    const isDuplicate = invoiceKey ? duplicates.has(String(r[invoiceKey]||'').trim()) : false;
-    const amountVal = amountKey ? parseFloat(String(r[amountKey]||'').replace(/[^0-9.-]/g,'')) : NaN;
-    const isAmountOutlier = amountKey ? outlierVals.has(amountVal) : false;
-    const flags = { isMissingDate, isMissingAmount, isMissingInvoice, isDuplicate, isAmountOutlier };
-    const risk = computeRowRisk(r, flags);
-    return { row: r, idx, flags, risk };
-  });
-
-  // apply search filter
-  const searchLower = currentSearch.trim().toLowerCase();
-  let filtered = enriched.filter(e => {
-    if(currentRiskFilter !== 'all' && e.risk !== currentRiskFilter) return false;
-    if(!searchLower) return true;
-    return Object.values(e.row).some(v => String(v||'').toLowerCase().includes(searchLower));
-  });
-
-  // pagination
-  pageSize = parseInt(document.getElementById('pageSize').value || '10',10);
-  const total = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  if(currentPage > totalPages) currentPage = totalPages;
-  const start = (currentPage -1) * pageSize;
-  const pageRows = filtered.slice(start, start + pageSize);
-
-  // update table summary + pagination controls
-  document.getElementById('tableSummary').innerText = `Showing ${filtered.length} row(s) — page ${currentPage}/${totalPages}`;
-  renderPagination(totalPages);
-
-  // build HTML table
-  let html = "<table class='w-full border-collapse text-sm'><thead class='bg-slate-200 sticky top-0'><tr>";
-  globalParsed.headers.forEach(h => html += `<th class='border px-2 py-1 text-left'>${escapeHtml(h)}</th>`);
-  html += `<th class='border px-2 py-1 text-left'>Risk</th></tr></thead><tbody>`;
-
-  pageRows.forEach(en=>{
-    const r = en.row;
-    const flags = en.flags;
-    const risk = en.risk;
-    html += `<tr class='align-top ${risk==='High'?'bg-red-50':''}'>`;
-    globalParsed.headers.forEach(h=>{
-      let val = escapeHtml(String(r[h]||''));
-      let cellClass = 'border px-2 py-1 align-top';
-      if((h===dateKey || h===amountKey || h===invoiceKey) && !String(r[h]||'').trim()){
-        cellClass += ' bg-red-100 font-semibold';
-      }
-      if(h===invoiceKey && flags.isDuplicate && String(r[h]||'').trim()){
-        cellClass += ' bg-yellow-200 font-semibold';
-      }
-      html += `<td class="${cellClass}">${val}</td>`;
-    });
-    html += `<td class="border px-2 py-1 align-top font-semibold">${risk}</td>`;
-    html += "</tr>";
-  });
-
-  html += "</tbody></table>";
-  document.getElementById('tablePreview').innerHTML = html;
-}
-
-/* render pagination controls */
-function renderPagination(totalPages){
-  const pag = document.getElementById('pagination');
-  if(totalPages<=1) { pag.innerHTML=''; return; }
-  let html = `<div class="flex gap-1">`;
-  html += `<button class="px-2 py-1 border rounded" onclick="goPage(${Math.max(1,currentPage-1)})">Prev</button>`;
-  const start = Math.max(1, currentPage-2);
-  const end = Math.min(totalPages, currentPage+2);
-  for(let p=start;p<=end;p++){
-    if(p===currentPage) html += `<button class="px-2 py-1 border rounded bg-slate-200" onclick="goPage(${p})">${p}</button>`;
-    else html += `<button class="px-2 py-1 border rounded" onclick="goPage(${p})">${p}</button>`;
-  }
-  html += `<button class="px-2 py-1 border rounded" onclick="goPage(${Math.min(totalPages,currentPage+1)})">Next</button>`;
-  html += `</div>`;
-  pag.innerHTML = html;
-}
-window.goPage = function(p){ currentPage = p; renderTable(); }
-
-/* ----------------- run audit & update summary chart ----------------- */
-function runAuditAndRender(parsed){
-  const invoiceKey = parsed.headers.find(h=>h.toLowerCase().includes('invoice')||h.toLowerCase().includes('receipt'));
-  const dateKey = parsed.headers.find(h=>h.toLowerCase().includes('date'));
-  const amountKey = parsed.headers.find(h=>h.toLowerCase().includes('amount')||h.toLowerCase().includes('total')||h.toLowerCase().includes('value'));
-
-  let missingDates=0, missingAmounts=0, missingInvoices=0;
-  const seen={}, duplicates=new Set();
-  parsed.data.forEach(r=>{
-    if(dateKey && !String(r[dateKey]||'').trim()) missingDates++;
-    if(amountKey && !String(r[amountKey]||'').trim()) missingAmounts++;
-    if(invoiceKey && !String(r[invoiceKey]||'').trim()) missingInvoices++;
-    if(invoiceKey){
-      const v=String(r[invoiceKey]||'').trim();
+    if(invKey){
+      const v=r[invKey];
       if(v){
         if(seen[v]) duplicates.add(v);
         seen[v]=true;
@@ -297,157 +172,175 @@ function runAuditAndRender(parsed){
     }
   });
 
-  const findings = [];
-  if(!dateKey) findings.push("No date column found.");
-  if(!amountKey) findings.push("No amount column found.");
-  if(!invoiceKey) findings.push("No invoice column found.");
-  if(missingDates) findings.push(`${missingDates} missing dates.`);
-  if(missingAmounts) findings.push(`${missingAmounts} missing amounts.`);
-  if(missingInvoices) findings.push(`${missingInvoices} missing invoices.`);
-  if(duplicates.size) findings.push(`${duplicates.size} duplicate invoice(s).`);
-  if(!findings.length) findings.push("No issues detected.");
+  lastReport = data.map((r,i)=>{
+    let risk="low";
+    if(!r[dateKey] || !r[amtKey] || !r[invKey]) risk="medium";
+    if(duplicates.has(r[invKey])) risk="high";
 
-  const stats = {
-    total: parsed.data.length,
-    missingDates, missingAmounts, missingInvoices,
-    duplicates: duplicates.size
-  };
-
-  // update right-side summary box + chart
-  document.getElementById('summaryBox').innerHTML = `
-    <div>Total rows: <strong>${stats.total}</strong></div>
-    <div>Missing dates: <strong>${stats.missingDates}</strong></div>
-    <div>Missing amounts: <strong>${stats.missingAmounts}</strong></div>
-    <div>Missing invoices: <strong>${stats.missingInvoices}</strong></div>
-    <div>Duplicate invoices: <strong>${stats.duplicates}</strong></div>
-  `;
-
-  const ctx = document.getElementById('summaryChart').getContext('2d');
-  if(chartInstance) chartInstance.destroy();
-  chartInstance = new Chart(ctx, {
-    type:'bar',
-    data:{
-      labels:['Missing Dates','Missing Amounts','Missing Invoices','Duplicates'],
-      datasets:[{label:'Issues', data:[stats.missingDates, stats.missingAmounts, stats.missingInvoices, stats.duplicates]}]
-    },
-    options:{responsive:true, maintainAspectRatio:false}
+    return {
+      row:i+1,
+      risk,
+      message:
+        risk=="high" ? "Duplicate invoice detected" :
+        risk=="medium" ? "Missing key financial field" :
+        "OK",
+      record:r
+    };
   });
 
-  document.getElementById('results').innerHTML = findings.map((f,i)=>`<div class="p-2 border-b">${i+1}. ${escapeHtml(f)}</div>`).join('');
-  return { findings, stats };
+  updateDashboard({
+    total:data.length,
+    missingDate,
+    missingAmt,
+    missingInv,
+    duplicates:duplicates.size
+  });
+
+  refreshView();
 }
 
-/* ----------------- UI actions ----------------- */
-document.getElementById('pageSize').addEventListener('change', e=>{ pageSize=parseInt(e.target.value||'10',10); currentPage=1; renderTable(); });
-document.getElementById('searchBox').addEventListener('input', e=>{ currentSearch = e.target.value||''; currentPage=1; renderTable(); });
-document.getElementById('riskFilter').addEventListener('change', e=>{ currentRiskFilter=e.target.value; currentPage=1; renderTable(); });
+function refreshView(){
+  let filtered = lastReport;
 
-/* ----------------- process CSV/Excel and wire up buttons ----------------- */
-document.getElementById('runAudit').addEventListener('click', async ()=>{
-  let csvText = document.getElementById('csvInput').value;
-  const fileInput = document.getElementById('fileInput');
-  if(fileInput.files && fileInput.files.length){
-    const file = fileInput.files[0];
-    const name = file.name.toLowerCase();
-    if(name.endsWith('.xlsx') || name.endsWith('.xls')){
-      try {
-        globalParsed = await parseExcelFile(file);
-        currentPage=1; currentSearch=''; currentRiskFilter='all'; processAfterLoad();
-      } catch(err){
-        console.error(err); alert('Failed to parse Excel file.');
-      }
-      return;
+  if(currentSearch){
+    filtered = filtered.filter(r=>JSON.stringify(r.record).toLowerCase().includes(currentSearch));
+  }
+
+  if(currentRisk!="all"){
+    filtered = filtered.filter(r=>r.risk===currentRisk);
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
+  if(currentPage>totalPages) currentPage=totalPages;
+
+  const start=(currentPage-1)*rowsPerPage;
+  pagedReport = filtered.slice(start,start+rowsPerPage);
+
+  const box = document.getElementById("results");
+  box.innerHTML = pagedReport.map(r=>`
+    <div class="border-b p-2 ${r.risk=='high'?'bg-red-100':r.risk=='medium'?'bg-yellow-100':'bg-green-100'}">
+      <strong>Row ${r.row}</strong> — ${r.message}<br>
+      <span class="text-xs">${JSON.stringify(r.record)}</span>
+    </div>
+  `).join("");
+
+  document.getElementById("pageNumber").innerText =
+    `Page ${currentPage} of ${Math.max(1, totalPages)}`;
+}
+
+function updateDashboard(stats){
+  const box = document.getElementById("summaryBox");
+  box.innerHTML = `
+    <div>Total Rows: <strong>${stats.total}</strong></div>
+    <div>Missing Dates: <strong>${stats.missingDate}</strong></div>
+    <div>Missing Amounts: <strong>${stats.missingAmt}</strong></div>
+    <div>Missing Invoices: <strong>${stats.missingInv}</strong></div>
+    <div>Duplicate Invoices: <strong>${stats.duplicates}</strong></div>
+  `;
+
+  const ctx = document.getElementById("summaryChart");
+  if(chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(ctx,{
+    type:"bar",
+    data:{
+      labels:["Missing Dates","Missing Amounts","Missing Invoices","Duplicates"],
+      datasets:[{
+        label:"Issues",
+        data:[
+          stats.missingDate,
+          stats.missingAmt,
+          stats.missingInv,
+          stats.duplicates
+        ]
+      }]
     }
-    if(name.endsWith('.csv')){
-      const reader = new FileReader();
-      reader.onload = e => {
-        globalParsed = parseCSV(e.target.result);
-        currentPage=1; currentSearch=''; currentRiskFilter='all'; processAfterLoad();
+  });
+}
+
+document.getElementById("runAudit").onclick=()=>{
+  const file=document.getElementById("fileInput").files[0];
+  let text=document.getElementById("csvInput").value.trim();
+
+  if(file){
+    const name=file.name.toLowerCase();
+    if(name.endsWith(".xlsx")||name.endsWith(".xls")){
+      parseExcelFile(file).then(p=>{
+        globalParsed=p;
+        runAudit(p);
+      });
+    } else {
+      const reader=new FileReader();
+      reader.onload=e=>{
+        const p=parseCSV(e.target.result);
+        globalParsed=p;
+        runAudit(p);
       };
       reader.readAsText(file);
-      return;
     }
-    alert('Unsupported file type. Use CSV or Excel (.xlsx/.xls).');
-    return;
-  } else if(csvText && csvText.trim()){
-    globalParsed = parseCSV(csvText);
-    currentPage=1; currentSearch=''; currentRiskFilter='all';
-    processAfterLoad();
-    return;
-  } else {
-    alert('Paste CSV or upload a CSV file first.');
     return;
   }
-});
 
-function processAfterLoad(){
-  const { findings, stats } = runAuditAndRender(globalParsed);
-  lastReport = { parsed: globalParsed, findings, stats };
-  renderTable();
-  document.getElementById('tableSummary').innerText = `Total rows: ${stats.total}`;
-}
-
-/* sample */
-document.getElementById('pasteSample').addEventListener('click', ()=>{
-  const sample = `date,employee,amount,invoice,requested_by,approved_by
-2025-10-01,John Doe,120.00,INV-1001,John Doe,Alice
-2025-10-05,Jane Smith,45.50,INV-1002,Jane Smith,Bob
-2025-10-07,Mary Tan,5000,INV-1003,Mary Tan,Mary Tan
-2025-10-08,Sam,20000,INV-1001,Sam,Manager
-2025-10-09,,150,,NoReceipt,Manager`;
-  document.getElementById('csvInput').value = sample;
-  document.getElementById('runAudit').click();
-});
-
-/* ----------------- Export JSON ----------------- */
-document.getElementById('downloadJSON').addEventListener('click', ()=>{
-  if(!lastReport) return alert('Run an audit first.');
-  const payload = {
-    generated_at: new Date().toISOString(),
-    stats: lastReport.stats,
-    findings: lastReport.findings,
-    sample: lastReport.parsed.data.slice(0,100)
-  };
-  const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'audit_report.json'; a.click(); URL.revokeObjectURL(url);
-});
-
-/* ----------------- Export PDF (capture table area + summary) ----------------- */
-document.getElementById('downloadPDF').addEventListener('click', async ()=>{
-  if(!lastReport) return alert('Run an audit first.');
-  const tableWrapper = document.getElementById('tableWrapper');
-  const originalMax = tableWrapper.style.maxHeight;
-  tableWrapper.style.maxHeight = 'none';
-  try {
-    const canvas = await html2canvas(tableWrapper, {scale:2, useCORS:true});
-    const imgData = canvas.toDataURL('image/png');
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({unit:'pt', format:'a4'});
-    const pageW = pdf.internal.pageSize.getWidth();
-    const margin = 40;
-    pdf.setFontSize(14); pdf.text('Internal Audit Report', margin, 40);
-    pdf.setFontSize(11);
-    const lines = [
-      `Generated: ${new Date().toLocaleString()}`,
-      `Total rows: ${lastReport.stats.total}`,
-      `Missing Dates: ${lastReport.stats.missingDates}`,
-      `Missing Amounts: ${lastReport.stats.missingAmounts}`,
-      `Missing Invoices: ${lastReport.stats.missingInvoices}`,
-      `Duplicates: ${lastReport.stats.duplicates}`
-    ];
-    pdf.text(lines, margin, 60);
-    const imgProps = pdf.getImageProperties(imgData);
-    const availW = pageW - margin*2;
-    const imgH = (imgProps.height * availW) / imgProps.width;
-    pdf.addImage(imgData, 'PNG', margin, 110, availW, imgH);
-    pdf.save('audit_table_report.pdf');
-  } catch(err){
-    console.error(err); alert('PDF export failed.');
-  } finally {
-    tableWrapper.style.maxHeight = originalMax;
+  if(text){
+    const parsed=parseCSV(text);
+    globalParsed=parsed;
+    runAudit(parsed);
+    return;
   }
-});
+
+  alert("Upload a file or paste CSV first.");
+};
+
+document.getElementById("pasteSample").onclick=()=>{
+  const s = `date,employee,amount,invoice
+2025-01-01,John,100,INV-1
+2025-01-02,Mary,300,INV-1
+2025-01-03,Peter,,INV-3`;
+  document.getElementById("csvInput").value=s;
+};
+
+document.getElementById("searchInput").oninput=(e)=>{
+  currentSearch=e.target.value.toLowerCase();
+  refreshView();
+};
+
+document.getElementById("riskFilter").onchange=(e)=>{
+  currentRisk=e.target.value;
+  refreshView();
+};
+
+document.getElementById("prevPage").onclick=()=>{
+  if(currentPage>1){currentPage--;refreshView();}
+};
+
+document.getElementById("nextPage").onclick=()=>{
+  currentPage++;refreshView();
+};
+
+document.getElementById("downloadJSON").onclick=()=>{
+  if(!lastReport.length) return alert("Run audit first");
+  const str="data:text/json,"+encodeURIComponent(JSON.stringify(lastReport,null,2));
+  const a=document.createElement("a");
+  a.href=str;
+  a.download="audit_report.json";
+  a.click();
+};
+
+document.getElementById("downloadPDF").onclick=()=>{
+  if(!lastReport.length) return alert("Run audit first");
+
+  const { jsPDF } = window.jspdf;
+  const doc=new jsPDF();
+
+  doc.text("Internal Audit Report",10,10);
+
+  lastReport.forEach((r,i)=>{
+    doc.text(`${i+1}. [${r.risk.toUpperCase()}] ${r.message}`,10,20+i*8);
+  });
+
+  doc.save("audit_report.pdf");
+};
+
 </script>
 </body>
 </html>
