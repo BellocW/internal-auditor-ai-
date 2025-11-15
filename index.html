@@ -53,7 +53,7 @@
       <div id="summaryBox" class="mt-3 text-sm text-slate-700"></div>
       <canvas id="summaryChart" class="mt-4 w-full" height="200"></canvas>
       <div class="mt-4">
-        <strong>Fraud Score:</strong> <span id="fraudScore">0</span>
+        <strong>Fraud Score:</strong> <span id="fraudScore">0%</span>
       </div>
     </section>
   </main>
@@ -73,15 +73,16 @@
 </div>
 
 <script>
+let lastReport = [];
+let chartInstance = null;
+
 // ===== Login =====
 const loginPage = document.getElementById('loginPage');
 const dashboard = document.getElementById('dashboard');
-const loginBtn = document.getElementById('loginBtn');
-const logoutBtn = document.getElementById('logoutBtn');
 
 function checkLogin() {
   const logged = localStorage.getItem('nac_logged');
-  if(logged) {
+  if(logged){
     loginPage.classList.add('hidden');
     dashboard.classList.remove('hidden');
   } else {
@@ -90,7 +91,7 @@ function checkLogin() {
   }
 }
 
-loginBtn.addEventListener('click', ()=>{
+document.getElementById('loginBtn').addEventListener('click', ()=>{
   const u = document.getElementById('username').value.trim();
   const p = document.getElementById('password').value.trim();
   if(!u || !p) return alert('Enter username/password');
@@ -98,7 +99,7 @@ loginBtn.addEventListener('click', ()=>{
   checkLogin();
 });
 
-logoutBtn.addEventListener('click', ()=>{
+document.getElementById('logoutBtn').addEventListener('click', ()=>{
   localStorage.removeItem('nac_logged');
   checkLogin();
 });
@@ -106,8 +107,8 @@ logoutBtn.addEventListener('click', ()=>{
 checkLogin();
 
 // ===== CSV Parser =====
-function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
+function parseCSV(text){
+  const lines = text.split(/\r?\n/).filter(l=>l.trim());
   if(!lines.length) return { headers: [], data: [] };
   const headers = lines[0].split(',').map(h=>h.trim());
   const data = lines.slice(1).map(line=>{
@@ -120,33 +121,63 @@ function parseCSV(text) {
 }
 
 // ===== Audit Logic =====
-let lastReport = [];
-function runAudit(parsed) {
+function runAudit(parsed){
   const dataRows = parsed.data;
   const headers = parsed.headers;
-  const lowerHeaders = headers.map(h=>h.toLowerCase());
 
   const invoiceKey = headers.find(h=>h.toLowerCase().includes("invoice")||h.toLowerCase().includes("receipt"));
   const dateKey = headers.find(h=>h.toLowerCase().includes("date"));
   const amountKey = headers.find(h=>h.toLowerCase().includes("amount")||h.toLowerCase().includes("total")||h.toLowerCase().includes("value"));
+  const requestedKey = headers.find(h=>h.toLowerCase().includes("requested"));
+  const approvedKey = headers.find(h=>h.toLowerCase().includes("approved"));
 
   let missingDates=0, missingAmounts=0, missingInvoices=0;
-  const seen={};
+  const seen = {};
   const duplicates = new Set();
+  const amountValues = [];
+  const approvalAnomalies = [];
 
   dataRows.forEach(r=>{
     if(dateKey && !r[dateKey].trim()) missingDates++;
     if(amountKey && !r[amountKey].trim()) missingAmounts++;
     if(invoiceKey && !r[invoiceKey].trim()) missingInvoices++;
-    if(invoiceKey) {
+
+    if(invoiceKey){
       const inv = r[invoiceKey].trim();
       if(inv){
         if(seen[inv]) duplicates.add(inv);
         seen[inv]=true;
       }
     }
+
+    if(amountKey && r[amountKey].trim()){
+      const val = parseFloat(r[amountKey]);
+      if(!isNaN(val)) amountValues.push(val);
+    }
+
+    if(requestedKey && approvedKey && r[requestedKey].trim() && r[approvedKey].trim() && r[requestedKey].trim()===r[approvedKey].trim()){
+      approvalAnomalies.push(r);
+    }
   });
 
+  // Outlier detection (1.5*IQR)
+  let outlierCount=0;
+  if(amountValues.length){
+    amountValues.sort((a,b)=>a-b);
+    const q1 = amountValues[Math.floor(amountValues.length*0.25)];
+    const q3 = amountValues[Math.floor(amountValues.length*0.75)];
+    const iqr = q3-q1;
+    const lower = q1-1.5*iqr;
+    const upper = q3+1.5*iqr;
+    dataRows.forEach(r=>{
+      if(amountKey && r[amountKey].trim()){
+        const val = parseFloat(r[amountKey]);
+        if(!isNaN(val) && (val<lower || val>upper)) outlierCount++;
+      }
+    });
+  }
+
+  // Compile findings
   const findings=[];
   if(!dateKey) findings.push("No date column found.");
   if(!amountKey) findings.push("No amount column found.");
@@ -155,18 +186,30 @@ function runAudit(parsed) {
   if(missingAmounts) findings.push(`${missingAmounts} missing amounts detected.`);
   if(missingInvoices) findings.push(`${missingInvoices} missing invoices detected.`);
   if(duplicates.size) findings.push(`${duplicates.size} duplicate invoices detected.`);
+  if(outlierCount) findings.push(`${outlierCount} amount outliers detected.`);
+  if(approvalAnomalies.length) findings.push(`${approvalAnomalies.length} approval anomalies detected.`);
   if(!findings.length) findings.push("No issues detected.");
 
-  // fraud score calculation (simple example)
-  const fraudScore = Math.min(100, (missingDates + missingAmounts + missingInvoices + duplicates.size)*10);
+  // Fraud score
+  const fraudScore = Math.min(100,
+    missingDates*5 +
+    missingAmounts*5 +
+    missingInvoices*5 +
+    duplicates.size*10 +
+    outlierCount*10 +
+    approvalAnomalies.length*10
+  );
   document.getElementById('fraudScore').innerText = fraudScore + "%";
 
+  // Update dashboard
   updateSummaryDashboard({
     total: dataRows.length,
     missingDates,
     missingAmounts,
     missingInvoices,
-    duplicates: duplicates.size
+    duplicates: duplicates.size,
+    outliers: outlierCount,
+    approvalAnomalies: approvalAnomalies.length
   });
 
   lastReport = findings;
@@ -175,10 +218,10 @@ function runAudit(parsed) {
 
 // ===== Table Preview =====
 function showTablePreview(parsed){
-  if(!parsed.data.length) return document.getElementById("tablePreview").innerHTML = "No data to preview.";
+  if(!parsed.data.length) return document.getElementById("tablePreview").innerHTML="No data to preview.";
   const headers = parsed.headers;
   const rows = parsed.data.slice(0,10);
-  let html = "<table class='w-full border-collapse'><thead class='bg-slate-200'><tr>";
+  let html="<table class='w-full border-collapse'><thead class='bg-slate-200'><tr>";
   headers.forEach(h=>html+=`<th class='border px-2 py-1 text-left'>${h}</th>`);
   html+="</tr></thead><tbody>";
   rows.forEach(r=>{
@@ -187,51 +230,55 @@ function showTablePreview(parsed){
     html+="</tr>";
   });
   html+="</tbody></table>";
-  document.getElementById("tablePreview").innerHTML = html;
+  document.getElementById("tablePreview").innerHTML=html;
 }
 
 // ===== Summary Dashboard =====
-let chartInstance=null;
 function updateSummaryDashboard(stats){
-  const box = document.getElementById('summaryBox');
+  const box=document.getElementById('summaryBox');
   box.innerHTML=`
     <div>Total Rows: <strong>${stats.total}</strong></div>
     <div>Missing Dates: <strong>${stats.missingDates}</strong></div>
     <div>Missing Amounts: <strong>${stats.missingAmounts}</strong></div>
     <div>Missing Invoices: <strong>${stats.missingInvoices}</strong></div>
     <div>Duplicate Invoices: <strong>${stats.duplicates}</strong></div>
+    <div>Amount Outliers: <strong>${stats.outliers}</strong></div>
+    <div>Approval Anomalies: <strong>${stats.approvalAnomalies}</strong></div>
   `;
-  const ctx = document.getElementById('summaryChart').getContext('2d');
+  const ctx=document.getElementById('summaryChart').getContext('2d');
   if(chartInstance) chartInstance.destroy();
-  chartInstance = new Chart(ctx, {
+  chartInstance=new Chart(ctx,{
     type:"bar",
     data:{
-      labels:["Missing Dates","Missing Amounts","Missing Invoices","Duplicates"],
+      labels:["Missing Dates","Missing Amounts","Missing Invoices","Duplicates","Outliers","Approval Anomalies"],
       datasets:[{
         label:"Issues Found",
-        data:[stats.missingDates, stats.missingAmounts, stats.missingInvoices, stats.duplicates],
-        backgroundColor:['#F87171','#FBBF24','#60A5FA','#34D399']
+        data:[stats.missingDates, stats.missingAmounts, stats.missingInvoices, stats.duplicates, stats.outliers, stats.approvalAnomalies],
+        backgroundColor:['#F87171','#FBBF24','#60A5FA','#34D399','#A78BFA','#F472B6']
       }]
     }
   });
 }
 
-// ====== Event Listeners ======
+// ===== Event Listeners =====
+function processCSV(csvText){
+  const parsed=parseCSV(csvText);
+  showTablePreview(parsed);
+  const results=runAudit(parsed);
+  document.getElementById('results').innerHTML=results.map(r=>`<div class="p-2 border-b">${r}</div>`).join('');
+}
+
 document.getElementById('runAudit').addEventListener('click', ()=>{
-  let csvText = document.getElementById('csvInput').value;
-  const fileInput = document.getElementById('csvFile');
+  let csvText=document.getElementById('csvInput').value;
+  const fileInput=document.getElementById('csvFile');
   if(fileInput.files.length){
-    const reader = new FileReader();
+    const reader=new FileReader();
     reader.onload=(e)=>{
-      csvText=e.target.result;
-      processCSV(csvText);
+      processCSV(e.target.result);
     };
     reader.readAsText(fileInput.files[0]);
-  }else if(csvText){
-    processCSV(csvText);
-  }else{
-    alert("Paste CSV or upload a CSV file first.");
-  }
+  } else if(csvText) processCSV(csvText);
+  else alert("Paste CSV or upload a CSV file first.");
 });
 
 document.getElementById('pasteSample').addEventListener('click', ()=>{
@@ -239,25 +286,16 @@ document.getElementById('pasteSample').addEventListener('click', ()=>{
 2025-10-01,John Doe,120.00,INV-1001,John Doe,Alice
 2025-10-05,Jane Smith,45.50,INV-1002,Jane Smith,Bob
 2025-10-07,Mary Tan,5000,INV-1003,Mary Tan,Mary Tan`;
-  document.getElementById('csvInput').value = sample;
+  document.getElementById('csvInput').value=sample;
   processCSV(sample);
 });
-
-function processCSV(csvText){
-  const parsed=parseCSV(csvText);
-  showTablePreview(parsed);
-  const results=runAudit(parsed);
-  document.getElementById('results').innerHTML = results.map(r=>`<div class="p-2 border-b">${r}</div>`).join('');
-}
 
 // ===== Export JSON =====
 document.getElementById('downloadJSON').addEventListener('click', ()=>{
   if(!lastReport.length) return alert("Run audit first.");
   const dataStr="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(lastReport,null,2));
   const dl=document.createElement('a');
-  dl.setAttribute("href",dataStr);
-  dl.setAttribute("download","audit_report.json");
-  document.body.appendChild(dl); dl.click(); dl.remove();
+  dl.href=dataStr; dl.download="audit_report.json"; document.body.appendChild(dl); dl.click(); dl.remove();
 });
 
 // ===== Export Excel =====
@@ -272,8 +310,8 @@ document.getElementById('downloadExcel').addEventListener('click', ()=>{
 // ===== Export PDF =====
 document.getElementById('downloadPDF').addEventListener('click', ()=>{
   if(!lastReport.length) return alert("Run audit first.");
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
+  const { jsPDF }=window.jspdf;
+  const doc=new jsPDF();
   doc.setFontSize(12);
   doc.text("Internal Audit Report",10,10);
   lastReport.forEach((r,i)=>doc.text(`${i+1}. ${r}`,10,20+i*10));
@@ -288,10 +326,10 @@ document.getElementById('saveReport').addEventListener('click', ()=>{
 });
 
 document.getElementById('loadReport').addEventListener('click', ()=>{
-  const saved = localStorage.getItem('nac_last_report');
+  const saved=localStorage.getItem('nac_last_report');
   if(!saved) return alert("No saved report found.");
-  lastReport = JSON.parse(saved);
-  document.getElementById('results').innerHTML = lastReport.map(r=>`<div class="p-2 border-b">${r}</div>`).join('');
+  lastReport=JSON.parse(saved);
+  document.getElementById('results').innerHTML=lastReport.map(r=>`<div class="p-2 border-b">${r}</div>`).join('');
   alert("Last report loaded!");
 });
 </script>
