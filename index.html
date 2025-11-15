@@ -1,346 +1,300 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NAC Internal Auditor AI</title>
-
-<!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
-
-<!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<!-- SheetJS (Excel parser) -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
-<!-- jsPDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
 <style>
-body {
-  background:#f1f5f9;
-}
+  :root {
+    --nac-blue: #1D4ED8;
+    --nac-green: #10B981;
+  }
 </style>
 </head>
+<body class="bg-slate-50 min-h-screen font-sans">
 
-<body class="p-4">
-
-<div class="max-w-6xl mx-auto">
-  
-  <!-- Header -->
-  <header class="mb-6">
-    <h1 class="text-3xl font-bold">NAC Internal Auditor AI</h1>
-    <p class="text-slate-600 text-sm">Automated Internal Audit Engine (Excel + CSV)</p>
-  </header>
-
-  <!-- Layout -->
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-    <!-- LEFT SIDE -->
-    <div class="bg-white shadow rounded p-4">
-      <h2 class="font-semibold mb-3">Upload or Paste Data</h2>
-
-      <input id="fileInput" type="file"
-        accept=".csv, text/csv, .xlsx, .xls"
-        class="w-full mb-3 border rounded p-2" />
-
-      <textarea id="csvInput" rows="6"
-        class="w-full border rounded p-2 mb-3"
-        placeholder="Or paste CSV here..."></textarea>
-
-      <button id="runAudit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded">
-        Run Audit
-      </button>
-
-      <button id="pasteSample" class="mt-3 w-full border p-2 rounded">
-        Paste Sample CSV
-      </button>
-
-      <h3 class="mt-5 font-semibold">Table Preview</h3>
-      <div id="tablePreview" class="overflow-auto max-h-64 text-sm border rounded bg-slate-50 p-2"></div>
-    </div>
-
-    <!-- RIGHT SIDE -->
-    <div class="bg-white shadow rounded p-4">
-      <h2 class="font-semibold mb-3">Audit Results</h2>
-
-      <!-- Search + Filter -->
-      <div class="flex gap-2 mb-3">
-        <input id="searchInput" class="flex-1 border rounded p-2 text-sm" placeholder="Search..." />
-        <select id="riskFilter" class="border rounded p-2 text-sm">
-          <option value="all">All Risks</option>
-          <option value="high">High Risk</option>
-          <option value="medium">Medium Risk</option>
-          <option value="low">Low Risk</option>
-        </select>
-      </div>
-
-      <!-- Results -->
-      <div id="results" class="text-sm min-h-[120px] border rounded p-2 bg-slate-50">
-        No report yet.
-      </div>
-
-      <!-- Pagination -->
-      <div class="flex justify-between mt-3">
-        <button id="prevPage" class="px-3 py-1 border rounded">Prev</button>
-        <div id="pageNumber" class="text-sm text-slate-500"></div>
-        <button id="nextPage" class="px-3 py-1 border rounded">Next</button>
-      </div>
-
-      <!-- Download Buttons -->
-      <div class="mt-4 flex gap-3">
-        <button id="downloadJSON" class="flex-1 border p-2 rounded bg-slate-200">Download JSON</button>
-        <button id="downloadPDF" class="flex-1 border p-2 rounded bg-slate-200">Download PDF</button>
-      </div>
-
-      <!-- Summary -->
-      <h3 class="mt-6 font-semibold">Summary Dashboard</h3>
-      <div id="summaryBox" class="text-sm text-slate-700 mt-2"></div>
-      <canvas id="summaryChart" class="mt-4" height="200"></canvas>
-    </div>
-
+<!-- Login Page -->
+<div id="loginPage" class="flex flex-col items-center justify-center min-h-screen p-6">
+  <div class="bg-white p-6 rounded shadow-md w-full max-w-sm">
+    <h1 class="text-2xl font-bold text-center mb-4" style="color: var(--nac-blue)">NAC Internal Auditor AI</h1>
+    <input id="username" placeholder="Username" class="w-full p-2 mb-2 border rounded">
+    <input id="password" placeholder="Password" type="password" class="w-full p-2 mb-4 border rounded">
+    <button id="loginBtn" class="w-full py-2 bg-emerald-600 text-white rounded">Login</button>
   </div>
 </div>
 
-<!-- ===========================
-       JAVASCRIPT SECTION
-=========================== -->
+<!-- Dashboard -->
+<div id="dashboard" class="hidden max-w-5xl mx-auto p-6">
+  <header class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold" style="color: var(--nac-blue)">NAC Internal Auditor AI</h1>
+    <div>
+      <button id="logoutBtn" class="px-3 py-1 border rounded bg-slate-200">Logout</button>
+    </div>
+  </header>
+
+  <main class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Input Section -->
+    <section class="bg-white p-4 rounded-lg shadow-sm">
+      <h2 class="font-semibold mb-2">Paste or Upload CSV Data</h2>
+      <input type="file" id="csvFile" accept=".csv,text/csv" class="mb-2 w-full p-2 border rounded">
+      <textarea id="csvInput" rows="6" class="w-full p-2 border rounded mb-2" placeholder="Or paste CSV here"></textarea>
+      <button id="runAudit" class="w-full py-2 bg-emerald-600 text-white rounded shadow">Run Audit</button>
+      <button id="pasteSample" class="w-full mt-2 py-2 border rounded">Paste Sample CSV</button>
+      <div id="tablePreview" class="mt-4 overflow-auto max-h-48 border rounded bg-slate-50 p-2 text-sm"></div>
+    </section>
+
+    <!-- Audit Summary Section -->
+    <section class="bg-white p-4 rounded-lg shadow-sm">
+      <h2 class="font-semibold mb-2">Audit Summary</h2>
+      <div id="summaryBox" class="mt-3 text-sm text-slate-700"></div>
+      <canvas id="summaryChart" class="mt-4 w-full" height="200"></canvas>
+      <div class="mt-4">
+        <strong>Fraud Score:</strong> <span id="fraudScore">0</span>
+      </div>
+    </section>
+  </main>
+
+  <!-- Audit Results Section -->
+  <section class="bg-white p-4 rounded-lg shadow-sm mt-6">
+    <h2 class="font-semibold mb-2">Audit Results</h2>
+    <div id="results" class="text-sm text-slate-600">No report yet.</div>
+    <div class="mt-4 flex gap-2 flex-wrap">
+      <button id="downloadJSON" class="px-3 py-2 border rounded bg-slate-200">Download JSON</button>
+      <button id="downloadExcel" class="px-3 py-2 border rounded bg-slate-200">Download Excel</button>
+      <button id="downloadPDF" class="px-3 py-2 border rounded bg-slate-200">Download PDF</button>
+      <button id="saveReport" class="px-3 py-2 border rounded bg-green-400 text-white">Save Report</button>
+      <button id="loadReport" class="px-3 py-2 border rounded bg-blue-400 text-white">Load Last Report</button>
+    </div>
+  </section>
+</div>
 
 <script>
-let globalParsed = { headers: [], data: [] };
-let lastReport = [];
-let pagedReport = [];
-let currentPage = 1;
-let rowsPerPage = 6;
-let currentSearch = "";
-let currentRisk = "all";
-let chartInstance = null;
+// ===== Login =====
+const loginPage = document.getElementById('loginPage');
+const dashboard = document.getElementById('dashboard');
+const loginBtn = document.getElementById('loginBtn');
+const logoutBtn = document.getElementById('logoutBtn');
 
-function parseCSV(txt) {
-  const lines = txt.split(/\r?\n/).filter(l=>l.trim());
-  if (!lines.length) return {headers:[],data:[]};
+function checkLogin() {
+  const logged = localStorage.getItem('nac_logged');
+  if(logged) {
+    loginPage.classList.add('hidden');
+    dashboard.classList.remove('hidden');
+  } else {
+    loginPage.classList.remove('hidden');
+    dashboard.classList.add('hidden');
+  }
+}
 
-  const headers = lines[0].split(",").map(h=>h.trim());
+loginBtn.addEventListener('click', ()=>{
+  const u = document.getElementById('username').value.trim();
+  const p = document.getElementById('password').value.trim();
+  if(!u || !p) return alert('Enter username/password');
+  localStorage.setItem('nac_logged', u);
+  checkLogin();
+});
+
+logoutBtn.addEventListener('click', ()=>{
+  localStorage.removeItem('nac_logged');
+  checkLogin();
+});
+
+checkLogin();
+
+// ===== CSV Parser =====
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if(!lines.length) return { headers: [], data: [] };
+  const headers = lines[0].split(',').map(h=>h.trim());
   const data = lines.slice(1).map(line=>{
-    const cells = line.split(",").map(c=>c.trim());
-    let row = {};
-    headers.forEach((h,i)=>row[h] = cells[i] ?? "");
-    return row;
+    const parts = line.split(',').map(p=>p.trim());
+    const obj = {};
+    headers.forEach((h,i)=> obj[h]=parts[i]||"");
+    return obj;
   });
-
-  return {headers,data};
+  return { headers, data };
 }
 
-function parseExcelFile(file){
-  return new Promise((resolve)=>{
-    const reader=new FileReader();
-    reader.onload=(e)=>{
-      const workbook=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
-      const sheet=workbook.Sheets[workbook.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(sheet,{defval:""});
-      resolve({ headers: Object.keys(json[0]||{}), data: json });
-    };
-    reader.readAsArrayBuffer(file);
-  });
-}
+// ===== Audit Logic =====
+let lastReport = [];
+function runAudit(parsed) {
+  const dataRows = parsed.data;
+  const headers = parsed.headers;
+  const lowerHeaders = headers.map(h=>h.toLowerCase());
 
-function runAudit(parsed){
-  const data = parsed.data;
-  const hdr = parsed.headers.map(h=>h.toLowerCase());
+  const invoiceKey = headers.find(h=>h.toLowerCase().includes("invoice")||h.toLowerCase().includes("receipt"));
+  const dateKey = headers.find(h=>h.toLowerCase().includes("date"));
+  const amountKey = headers.find(h=>h.toLowerCase().includes("amount")||h.toLowerCase().includes("total")||h.toLowerCase().includes("value"));
 
-  const dateKey = parsed.headers.find(h=>h.toLowerCase().includes("date"));
-  const amtKey = parsed.headers.find(h=>h.toLowerCase().includes("amount"));
-  const invKey = parsed.headers.find(h=>h.toLowerCase().includes("invoice")||h.toLowerCase().includes("receipt"));
-
-  let missingDate=0, missingAmt=0, missingInv=0;
-
+  let missingDates=0, missingAmounts=0, missingInvoices=0;
   const seen={};
-  const duplicates=new Set();
+  const duplicates = new Set();
 
-  data.forEach(r=>{
-    if(dateKey && !r[dateKey]) missingDate++;
-    if(amtKey && !r[amtKey]) missingAmt++;
-    if(invKey && !r[invKey]) missingInv++;
-
-    if(invKey){
-      const v=r[invKey];
-      if(v){
-        if(seen[v]) duplicates.add(v);
-        seen[v]=true;
+  dataRows.forEach(r=>{
+    if(dateKey && !r[dateKey].trim()) missingDates++;
+    if(amountKey && !r[amountKey].trim()) missingAmounts++;
+    if(invoiceKey && !r[invoiceKey].trim()) missingInvoices++;
+    if(invoiceKey) {
+      const inv = r[invoiceKey].trim();
+      if(inv){
+        if(seen[inv]) duplicates.add(inv);
+        seen[inv]=true;
       }
     }
   });
 
-  lastReport = data.map((r,i)=>{
-    let risk="low";
-    if(!r[dateKey] || !r[amtKey] || !r[invKey]) risk="medium";
-    if(duplicates.has(r[invKey])) risk="high";
+  const findings=[];
+  if(!dateKey) findings.push("No date column found.");
+  if(!amountKey) findings.push("No amount column found.");
+  if(!invoiceKey) findings.push("No invoice column found.");
+  if(missingDates) findings.push(`${missingDates} missing dates detected.`);
+  if(missingAmounts) findings.push(`${missingAmounts} missing amounts detected.`);
+  if(missingInvoices) findings.push(`${missingInvoices} missing invoices detected.`);
+  if(duplicates.size) findings.push(`${duplicates.size} duplicate invoices detected.`);
+  if(!findings.length) findings.push("No issues detected.");
 
-    return {
-      row:i+1,
-      risk,
-      message:
-        risk=="high" ? "Duplicate invoice detected" :
-        risk=="medium" ? "Missing key financial field" :
-        "OK",
-      record:r
-    };
+  // fraud score calculation (simple example)
+  const fraudScore = Math.min(100, (missingDates + missingAmounts + missingInvoices + duplicates.size)*10);
+  document.getElementById('fraudScore').innerText = fraudScore + "%";
+
+  updateSummaryDashboard({
+    total: dataRows.length,
+    missingDates,
+    missingAmounts,
+    missingInvoices,
+    duplicates: duplicates.size
   });
 
-  updateDashboard({
-    total:data.length,
-    missingDate,
-    missingAmt,
-    missingInv,
-    duplicates:duplicates.size
+  lastReport = findings;
+  return findings;
+}
+
+// ===== Table Preview =====
+function showTablePreview(parsed){
+  if(!parsed.data.length) return document.getElementById("tablePreview").innerHTML = "No data to preview.";
+  const headers = parsed.headers;
+  const rows = parsed.data.slice(0,10);
+  let html = "<table class='w-full border-collapse'><thead class='bg-slate-200'><tr>";
+  headers.forEach(h=>html+=`<th class='border px-2 py-1 text-left'>${h}</th>`);
+  html+="</tr></thead><tbody>";
+  rows.forEach(r=>{
+    html+="<tr class='odd:bg-white even:bg-slate-50'>";
+    headers.forEach(h=>html+=`<td class='border px-2 py-1'>${r[h]}</td>`);
+    html+="</tr>";
   });
-
-  refreshView();
+  html+="</tbody></table>";
+  document.getElementById("tablePreview").innerHTML = html;
 }
 
-function refreshView(){
-  let filtered = lastReport;
-
-  if(currentSearch){
-    filtered = filtered.filter(r=>JSON.stringify(r.record).toLowerCase().includes(currentSearch));
-  }
-
-  if(currentRisk!="all"){
-    filtered = filtered.filter(r=>r.risk===currentRisk);
-  }
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / rowsPerPage));
-  if(currentPage>totalPages) currentPage=totalPages;
-
-  const start=(currentPage-1)*rowsPerPage;
-  pagedReport = filtered.slice(start,start+rowsPerPage);
-
-  const box = document.getElementById("results");
-  box.innerHTML = pagedReport.map(r=>`
-    <div class="border-b p-2 ${r.risk=='high'?'bg-red-100':r.risk=='medium'?'bg-yellow-100':'bg-green-100'}">
-      <strong>Row ${r.row}</strong> — ${r.message}<br>
-      <span class="text-xs">${JSON.stringify(r.record)}</span>
-    </div>
-  `).join("");
-
-  document.getElementById("pageNumber").innerText =
-    `Page ${currentPage} of ${Math.max(1, totalPages)}`;
-}
-
-function updateDashboard(stats){
-  const box = document.getElementById("summaryBox");
-  box.innerHTML = `
+// ===== Summary Dashboard =====
+let chartInstance=null;
+function updateSummaryDashboard(stats){
+  const box = document.getElementById('summaryBox');
+  box.innerHTML=`
     <div>Total Rows: <strong>${stats.total}</strong></div>
-    <div>Missing Dates: <strong>${stats.missingDate}</strong></div>
-    <div>Missing Amounts: <strong>${stats.missingAmt}</strong></div>
-    <div>Missing Invoices: <strong>${stats.missingInv}</strong></div>
+    <div>Missing Dates: <strong>${stats.missingDates}</strong></div>
+    <div>Missing Amounts: <strong>${stats.missingAmounts}</strong></div>
+    <div>Missing Invoices: <strong>${stats.missingInvoices}</strong></div>
     <div>Duplicate Invoices: <strong>${stats.duplicates}</strong></div>
   `;
-
-  const ctx = document.getElementById("summaryChart");
+  const ctx = document.getElementById('summaryChart').getContext('2d');
   if(chartInstance) chartInstance.destroy();
-
-  chartInstance = new Chart(ctx,{
+  chartInstance = new Chart(ctx, {
     type:"bar",
     data:{
       labels:["Missing Dates","Missing Amounts","Missing Invoices","Duplicates"],
       datasets:[{
-        label:"Issues",
-        data:[
-          stats.missingDate,
-          stats.missingAmt,
-          stats.missingInv,
-          stats.duplicates
-        ]
+        label:"Issues Found",
+        data:[stats.missingDates, stats.missingAmounts, stats.missingInvoices, stats.duplicates],
+        backgroundColor:['#F87171','#FBBF24','#60A5FA','#34D399']
       }]
     }
   });
 }
 
-document.getElementById("runAudit").onclick=()=>{
-  const file=document.getElementById("fileInput").files[0];
-  let text=document.getElementById("csvInput").value.trim();
-
-  if(file){
-    const name=file.name.toLowerCase();
-    if(name.endsWith(".xlsx")||name.endsWith(".xls")){
-      parseExcelFile(file).then(p=>{
-        globalParsed=p;
-        runAudit(p);
-      });
-    } else {
-      const reader=new FileReader();
-      reader.onload=e=>{
-        const p=parseCSV(e.target.result);
-        globalParsed=p;
-        runAudit(p);
-      };
-      reader.readAsText(file);
-    }
-    return;
+// ====== Event Listeners ======
+document.getElementById('runAudit').addEventListener('click', ()=>{
+  let csvText = document.getElementById('csvInput').value;
+  const fileInput = document.getElementById('csvFile');
+  if(fileInput.files.length){
+    const reader = new FileReader();
+    reader.onload=(e)=>{
+      csvText=e.target.result;
+      processCSV(csvText);
+    };
+    reader.readAsText(fileInput.files[0]);
+  }else if(csvText){
+    processCSV(csvText);
+  }else{
+    alert("Paste CSV or upload a CSV file first.");
   }
+});
 
-  if(text){
-    const parsed=parseCSV(text);
-    globalParsed=parsed;
-    runAudit(parsed);
-    return;
-  }
+document.getElementById('pasteSample').addEventListener('click', ()=>{
+  const sample=`date,employee,amount,invoice,requested_by,approved_by
+2025-10-01,John Doe,120.00,INV-1001,John Doe,Alice
+2025-10-05,Jane Smith,45.50,INV-1002,Jane Smith,Bob
+2025-10-07,Mary Tan,5000,INV-1003,Mary Tan,Mary Tan`;
+  document.getElementById('csvInput').value = sample;
+  processCSV(sample);
+});
 
-  alert("Upload a file or paste CSV first.");
-};
+function processCSV(csvText){
+  const parsed=parseCSV(csvText);
+  showTablePreview(parsed);
+  const results=runAudit(parsed);
+  document.getElementById('results').innerHTML = results.map(r=>`<div class="p-2 border-b">${r}</div>`).join('');
+}
 
-document.getElementById("pasteSample").onclick=()=>{
-  const s = `date,employee,amount,invoice
-2025-01-01,John,100,INV-1
-2025-01-02,Mary,300,INV-1
-2025-01-03,Peter,,INV-3`;
-  document.getElementById("csvInput").value=s;
-};
+// ===== Export JSON =====
+document.getElementById('downloadJSON').addEventListener('click', ()=>{
+  if(!lastReport.length) return alert("Run audit first.");
+  const dataStr="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(lastReport,null,2));
+  const dl=document.createElement('a');
+  dl.setAttribute("href",dataStr);
+  dl.setAttribute("download","audit_report.json");
+  document.body.appendChild(dl); dl.click(); dl.remove();
+});
 
-document.getElementById("searchInput").oninput=(e)=>{
-  currentSearch=e.target.value.toLowerCase();
-  refreshView();
-};
+// ===== Export Excel =====
+document.getElementById('downloadExcel').addEventListener('click', ()=>{
+  if(!lastReport.length) return alert("Run audit first.");
+  const ws=XLSX.utils.json_to_sheet(lastReport.map((v,i)=>({No:i+1, Issue:v})));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "AuditReport");
+  XLSX.writeFile(wb,"audit_report.xlsx");
+});
 
-document.getElementById("riskFilter").onchange=(e)=>{
-  currentRisk=e.target.value;
-  refreshView();
-};
-
-document.getElementById("prevPage").onclick=()=>{
-  if(currentPage>1){currentPage--;refreshView();}
-};
-
-document.getElementById("nextPage").onclick=()=>{
-  currentPage++;refreshView();
-};
-
-document.getElementById("downloadJSON").onclick=()=>{
-  if(!lastReport.length) return alert("Run audit first");
-  const str="data:text/json,"+encodeURIComponent(JSON.stringify(lastReport,null,2));
-  const a=document.createElement("a");
-  a.href=str;
-  a.download="audit_report.json";
-  a.click();
-};
-
-document.getElementById("downloadPDF").onclick=()=>{
-  if(!lastReport.length) return alert("Run audit first");
-
+// ===== Export PDF =====
+document.getElementById('downloadPDF').addEventListener('click', ()=>{
+  if(!lastReport.length) return alert("Run audit first.");
   const { jsPDF } = window.jspdf;
-  const doc=new jsPDF();
-
+  const doc = new jsPDF();
+  doc.setFontSize(12);
   doc.text("Internal Audit Report",10,10);
-
-  lastReport.forEach((r,i)=>{
-    doc.text(`${i+1}. [${r.risk.toUpperCase()}] ${r.message}`,10,20+i*8);
-  });
-
+  lastReport.forEach((r,i)=>doc.text(`${i+1}. ${r}`,10,20+i*10));
   doc.save("audit_report.pdf");
-};
+});
 
+// ===== Save/Load Local Report =====
+document.getElementById('saveReport').addEventListener('click', ()=>{
+  if(!lastReport.length) return alert("Run audit first.");
+  localStorage.setItem('nac_last_report', JSON.stringify(lastReport));
+  alert("Report saved locally!");
+});
+
+document.getElementById('loadReport').addEventListener('click', ()=>{
+  const saved = localStorage.getItem('nac_last_report');
+  if(!saved) return alert("No saved report found.");
+  lastReport = JSON.parse(saved);
+  document.getElementById('results').innerHTML = lastReport.map(r=>`<div class="p-2 border-b">${r}</div>`).join('');
+  alert("Last report loaded!");
+});
 </script>
+
 </body>
 </html>
